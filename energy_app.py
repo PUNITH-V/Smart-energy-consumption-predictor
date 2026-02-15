@@ -47,11 +47,12 @@ if st.button("Predict Energy Consumption"):
     st.subheader("📊 Prediction Result")
     st.success(f"Predicted Energy Consumption: {prediction:.4f} kW")
 
-    if prediction > 0.6:
-        st.warning("⚠ High consumption detected!")
-    elif prediction > 0.4:
-        st.info("⚡ Moderate usage")
+    if prediction > 0.30:
+       st.warning("⚠ High consumption detected!")
+    elif prediction > 0.20:
+       st.info("⚡ Moderate usage")
     else:
-        st.success("✅ Efficient energy usage")
+       st.success("✅ Efficient energy usage")
+
 
     st.bar_chart([prediction])
