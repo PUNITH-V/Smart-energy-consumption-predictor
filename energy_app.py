@@ -59,12 +59,13 @@ if st.button("Predict Energy Consumption"):
     st.write("Debug – All inputs:")
     st.write(input_data)
 
-    if prediction > 0.30:
-        st.warning("⚠ High consumption detected!")
-    elif prediction > 0.20:
-        st.info("⚡ Moderate usage")
+    if prediction > -17:
+       st.warning("⚠ High consumption detected!")
+    elif prediction > -18:
+       st.info("⚡ Moderate usage")
     else:
-        st.success("✅ Efficient energy usage")
+       st.success("✅ Efficient energy usage")
+
 
 
 
