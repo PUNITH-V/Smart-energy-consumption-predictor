@@ -37,7 +37,8 @@ input_data = pd.DataFrame([{
 }])
 
 
-input_data = input_data[scaler.feature_names_in_]
+input_data = input_data.reindex(columns=scaler.feature_names_in_, fill_value=0)
+
 
 if st.button("Predict Energy Consumption"):
     scaled = scaler.transform(input_data)
