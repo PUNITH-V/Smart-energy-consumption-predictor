@@ -9,6 +9,7 @@ st.write("Predict household energy usage using trained ML model.")
 # Load model and scaler
 model = joblib.load("model.pkl")
 scaler = joblib.load("scaler.pkl")
+target_scaler = joblib.load("target_scaler.pkl")
 
 st.sidebar.header("Input Features")
 
@@ -43,7 +44,12 @@ input_data = input_data.reindex(columns=scaler.feature_names_in_, fill_value=0)
 if st.button("Predict Energy Consumption"):
 
     scaled = scaler.transform(input_data)
-    prediction = model.predict(scaled)[0]
+    prediction_scaled = model.predict(scaled)[0]
+
+# 🔥 Convert back to real kW
+    prediction = target_scaler.inverse_transform([[prediction_scaled]])[0][0]
+
+    
 
     st.subheader("📊 Prediction Result")
 
