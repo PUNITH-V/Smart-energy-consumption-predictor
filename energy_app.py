@@ -41,18 +41,25 @@ input_data = input_data.reindex(columns=scaler.feature_names_in_, fill_value=0)
 
 
 if st.button("Predict Energy Consumption"):
+
     scaled = scaler.transform(input_data)
     prediction = model.predict(scaled)[0]
 
     st.subheader("📊 Prediction Result")
-    st.success(f"Predicted Energy Consumption: {prediction:.4f} kW")
+
+    # Show raw number clearly
+    st.write("Raw prediction value:", float(prediction))
+
+    st.write("Debug – All inputs:")
+    st.write(input_data)
 
     if prediction > 0.30:
-       st.warning("⚠ High consumption detected!")
+        st.warning("⚠ High consumption detected!")
     elif prediction > 0.20:
-       st.info("⚡ Moderate usage")
+        st.info("⚡ Moderate usage")
     else:
-       st.success("✅ Efficient energy usage")
+        st.success("✅ Efficient energy usage")
+
 
 
     st.bar_chart([prediction])
