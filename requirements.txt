@@ -3,4 +3,5 @@ pandas
 numpy
 scikit-learn
 joblib
-matplotlib
+plotly
+shap
