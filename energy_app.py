@@ -2,32 +2,47 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import joblib
-import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
+import shap
+import time
 
 st.set_page_config(layout="wide")
-st.title("🔋 Smart Energy Consumption Predictor")
-st.markdown("AI powered household electricity usage forecasting dashboard")
+
+# ================= THEME TOGGLE =================
+theme = st.sidebar.selectbox("Theme", ["Dark","Light"])
+
+if theme == "Dark":
+    st.markdown("""
+    <style>
+    body {background-color:#0E1117; color:white;}
+    </style>
+    """, unsafe_allow_html=True)
 
 # ================= LOAD =================
 model = joblib.load("model.pkl")
 scaler = joblib.load("scaler.pkl")
 target_scaler = joblib.load("target_scaler.pkl")
 
-# ================= SIDEBAR =================
-st.sidebar.header("⚙ Input Parameters")
+# ================= HEADER =================
+st.title("🔋 Smart Energy Consumption AI Dashboard")
+st.caption("Real-time household electricity prediction system")
 
-voltage = st.sidebar.number_input("Voltage", value=240.0)
-reactive = st.sidebar.number_input("Reactive Power", value=0.1)
-sub1 = st.sidebar.number_input("Sub Metering 1", value=0.0)
-sub2 = st.sidebar.number_input("Sub Metering 2", value=0.0)
-sub3 = st.sidebar.number_input("Sub Metering 3", value=0.0)
-hour = st.sidebar.slider("Hour", 0, 23, 12)
-weekday = st.sidebar.slider("Weekday", 0, 6, 3)
-lag1 = st.sidebar.number_input("Lag 1", value=0.3)
-lag24 = st.sidebar.number_input("Lag 24", value=0.3)
-rolling = st.sidebar.number_input("Rolling Mean", value=0.3)
+# ================= INPUT PANEL =================
+st.sidebar.header("Input Parameters")
 
-# ================= INPUT DATAFRAME =================
+voltage = st.sidebar.number_input("Voltage", 200.0,260.0,240.0)
+reactive = st.sidebar.slider("Reactive Power",0.0,1.0,0.1)
+sub1 = st.sidebar.slider("Sub Metering 1",0.0,5.0,0.0)
+sub2 = st.sidebar.slider("Sub Metering 2",0.0,5.0,0.0)
+sub3 = st.sidebar.slider("Sub Metering 3",0.0,5.0,0.0)
+hour = st.sidebar.slider("Hour",0,23,12)
+weekday = st.sidebar.slider("Weekday",0,6,3)
+lag1 = st.sidebar.slider("Lag 1",0.0,5.0,0.3)
+lag24 = st.sidebar.slider("Lag 24",0.0,5.0,0.3)
+rolling = st.sidebar.slider("Rolling Mean",0.0,5.0,0.3)
+
+# ================= INPUT DF =================
 input_data = pd.DataFrame([{
     "Voltage": voltage,
     "Global_reactive_power": reactive,
@@ -43,85 +58,141 @@ input_data = pd.DataFrame([{
 
 input_data = input_data.reindex(columns=scaler.feature_names_in_, fill_value=0)
 
-# ================= PREDICTION =================
-if st.button("Predict Energy Consumption"):
+# ================= REALTIME SIMULATION =================
+auto = st.sidebar.checkbox("Live Prediction Mode")
 
+def predict():
     scaled = scaler.transform(input_data)
-    prediction_scaled = model.predict(scaled)[0]
-    prediction = target_scaler.inverse_transform([[prediction_scaled]])[0][0]
+    pred_scaled = model.predict(scaled)[0]
+    pred = target_scaler.inverse_transform([[pred_scaled]])[0][0]
+    return pred
 
-    # ================= OUTPUT =================
-    st.subheader("📊 Prediction Result")
+if auto:
+    placeholder = st.empty()
+    for _ in range(1000):
+        prediction = predict()
+        placeholder.metric("Live Energy Prediction", round(prediction,3))
+        time.sleep(1)
+else:
+    if st.button("Predict"):
+        prediction = predict()
+    else:
+        prediction = None
 
-    col1, col2, col3 = st.columns(3)
+# ================= OUTPUT =================
+if prediction is not None:
+
+    st.divider()
+    st.subheader("Prediction Dashboard")
+
+    col1,col2,col3 = st.columns(3)
 
     col1.metric("Predicted Energy", round(prediction,3))
-    col2.metric("Hour", hour)
-    col3.metric("Weekday", weekday)
+    col2.metric("Hour",hour)
+    col3.metric("Weekday",weekday)
 
     # ================= STATUS =================
     if prediction > -17:
-        st.error("⚠ High Consumption")
-        level = "High"
+        level="High"
+        st.error("High Consumption Detected")
     elif prediction > -18:
-        st.warning("⚡ Moderate Usage")
-        level = "Medium"
+        level="Moderate"
+        st.warning("Moderate Usage")
     else:
-        st.success("✅ Efficient Usage")
-        level = "Low"
+        level="Efficient"
+        st.success("Efficient Usage")
 
-    # ================= BAR VISUAL =================
-    st.subheader("Prediction Level")
+    # ================= GAUGE =================
+    st.subheader("Consumption Meter")
 
-    fig, ax = plt.subplots()
-    ax.bar(["Energy"], [prediction])
-    ax.set_ylabel("Consumption")
-    st.pyplot(fig)
+    gauge = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=prediction,
+        gauge={
+            "axis":{"range":[-20,0]},
+            "steps":[
+                {"range":[-20,-18],"color":"green"},
+                {"range":[-18,-17],"color":"orange"},
+                {"range":[-17,0],"color":"red"}
+            ]
+        }
+    ))
+    st.plotly_chart(gauge,use_container_width=True)
 
-    # ================= FEATURE CONTRIBUTION =================
-    st.subheader("Feature Values Visualization")
+    # ================= FEATURE BAR =================
+    st.subheader("Feature Contribution")
 
-    fig2, ax2 = plt.subplots(figsize=(10,4))
-    ax2.bar(input_data.columns, input_data.iloc[0])
-    plt.xticks(rotation=90)
-    st.pyplot(fig2)
+    fig = px.bar(
+        x=input_data.columns,
+        y=input_data.iloc[0],
+        title="Input Feature Values"
+    )
+    st.plotly_chart(fig,use_container_width=True)
 
-    # ================= INPUT DISTRIBUTION =================
-    st.subheader("Input Comparison")
+    # ================= PIE =================
+    st.subheader("Input Distribution")
 
-    avg_values = np.mean(input_data.values)
+    pie = px.pie(
+        names=input_data.columns,
+        values=input_data.iloc[0]
+    )
+    st.plotly_chart(pie,use_container_width=True)
 
-    fig3, ax3 = plt.subplots()
-    ax3.bar(["Your Input","Average"], [np.mean(input_data.values), avg_values])
-    st.pyplot(fig3)
+    # ================= SHAP =================
+    st.subheader("Model Explainability (SHAP)")
 
-    # ================= RADAR STYLE VISUAL =================
-    st.subheader("Input Pattern Shape")
+    explainer = shap.Explainer(model, scaler.transform(input_data))
+    shap_values = explainer(scaler.transform(input_data))
 
-    values = input_data.values.flatten()
-    angles = np.linspace(0, 2*np.pi, len(values), endpoint=False)
+    shap_df = pd.DataFrame({
+        "Feature": input_data.columns,
+        "Impact": shap_values.values[0]
+    })
 
-    fig4 = plt.figure()
-    ax4 = fig4.add_subplot(111, polar=True)
-    ax4.plot(angles, values)
-    ax4.fill(angles, values, alpha=0.1)
-    ax4.set_xticks(angles)
-    ax4.set_xticklabels(input_data.columns, fontsize=8)
-    st.pyplot(fig4)
+    shap_fig = px.bar(
+        shap_df.sort_values("Impact"),
+        x="Impact",
+        y="Feature",
+        orientation="h",
+        title="Feature Impact on Prediction"
+    )
+    st.plotly_chart(shap_fig,use_container_width=True)
 
-    # ================= INTERPRETATION =================
-    st.subheader("📈 Interpretation")
+    # ================= AI RECOMMENDATIONS =================
+    st.subheader("AI Recommendations")
 
-    st.info(f"""
-Prediction Level: **{level}**
+    tips=[]
 
-Insights:
-- Higher voltage or reactive power increases prediction
-- Sub-meter values indicate appliance usage impact
-- Lag features reflect past consumption behavior
-- Rolling mean represents trend pattern
-""")
+    if voltage > 245:
+        tips.append("Reduce voltage fluctuation devices")
 
-    # ================= RAW DEBUG =================
-    with st.expander("See Raw Inputs"):
+    if sub1+sub2+sub3 > 3:
+        tips.append("Multiple appliances running simultaneously")
+
+    if hour > 18:
+        tips.append("Peak hour usage detected")
+
+    if lag24 > 1:
+        tips.append("Yesterday usage was high")
+
+    if not tips:
+        tips.append("Energy usage looks optimal")
+
+    for t in tips:
+        st.info(t)
+
+    # ================= ANIMATED TREND =================
+    st.subheader("Prediction Trend Simulation")
+
+    chart = st.line_chart(np.zeros(20))
+
+    data = np.zeros(20)
+
+    for i in range(20):
+        data[i] = prediction + np.random.normal(0,0.2)
+        chart.line_chart(data)
+        time.sleep(0.05)
+
+    # ================= RAW =================
+    with st.expander("View Raw Input"):
         st.write(input_data)
