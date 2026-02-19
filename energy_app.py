@@ -9,29 +9,20 @@ import time
 
 st.set_page_config(layout="wide")
 
-# ================= THEME TOGGLE =================
-theme = st.sidebar.selectbox("Theme", ["Dark","Light"])
-
-if theme == "Dark":
-    st.markdown("""
-    <style>
-    body {background-color:#0E1117; color:white;}
-    </style>
-    """, unsafe_allow_html=True)
-
 # ================= LOAD =================
 model = joblib.load("model.pkl")
 scaler = joblib.load("scaler.pkl")
 target_scaler = joblib.load("target_scaler.pkl")
+background = joblib.load("background.pkl")  # saved during training
 
-# ================= HEADER =================
-st.title("🔋 Smart Energy Consumption AI Dashboard")
-st.caption("Real-time household electricity prediction system")
+# ================= TITLE =================
+st.title("🔋 Smart Energy AI Dashboard")
+st.caption("Real-time Explainable Energy Prediction System")
 
-# ================= INPUT PANEL =================
+# ================= SIDEBAR =================
 st.sidebar.header("Input Parameters")
 
-voltage = st.sidebar.number_input("Voltage", 200.0,260.0,240.0)
+voltage = st.sidebar.number_input("Voltage",200.0,260.0,240.0)
 reactive = st.sidebar.slider("Reactive Power",0.0,1.0,0.1)
 sub1 = st.sidebar.slider("Sub Metering 1",0.0,5.0,0.0)
 sub2 = st.sidebar.slider("Sub Metering 2",0.0,5.0,0.0)
@@ -58,26 +49,26 @@ input_data = pd.DataFrame([{
 
 input_data = input_data.reindex(columns=scaler.feature_names_in_, fill_value=0)
 
-# ================= REALTIME SIMULATION =================
-auto = st.sidebar.checkbox("Live Prediction Mode")
-
+# ================= PREDICTION FUNCTION =================
 def predict():
     scaled = scaler.transform(input_data)
     pred_scaled = model.predict(scaled)[0]
-    pred = target_scaler.inverse_transform([[pred_scaled]])[0][0]
-    return pred
+    return target_scaler.inverse_transform([[pred_scaled]])[0][0]
+
+# ================= MODE =================
+auto = st.sidebar.checkbox("Live Prediction Mode")
 
 if auto:
     placeholder = st.empty()
     for _ in range(1000):
         prediction = predict()
-        placeholder.metric("Live Energy Prediction", round(prediction,3))
+        placeholder.metric("Live Prediction",round(prediction,3))
         time.sleep(1)
 else:
     if st.button("Predict"):
         prediction = predict()
     else:
-        prediction = None
+        prediction=None
 
 # ================= OUTPUT =================
 if prediction is not None:
@@ -86,15 +77,14 @@ if prediction is not None:
     st.subheader("Prediction Dashboard")
 
     col1,col2,col3 = st.columns(3)
-
-    col1.metric("Predicted Energy", round(prediction,3))
+    col1.metric("Energy",round(prediction,3))
     col2.metric("Hour",hour)
     col3.metric("Weekday",weekday)
 
     # ================= STATUS =================
     if prediction > -17:
         level="High"
-        st.error("High Consumption Detected")
+        st.error("High Consumption")
     elif prediction > -18:
         level="Moderate"
         st.warning("Moderate Usage")
@@ -119,80 +109,101 @@ if prediction is not None:
     ))
     st.plotly_chart(gauge,use_container_width=True)
 
-    # ================= FEATURE BAR =================
-    st.subheader("Feature Contribution")
+    # ================= FEATURE VALUES =================
+    st.subheader("Input Feature Distribution")
 
     fig = px.bar(
         x=input_data.columns,
         y=input_data.iloc[0],
-        title="Input Feature Values"
+        title="Feature Values"
     )
     st.plotly_chart(fig,use_container_width=True)
 
-    # ================= PIE =================
-    st.subheader("Input Distribution")
-
-    pie = px.pie(
-        names=input_data.columns,
-        values=input_data.iloc[0]
-    )
-    st.plotly_chart(pie,use_container_width=True)
-
     # ================= SHAP =================
-    st.subheader("Model Explainability (SHAP)")
+    st.subheader("Explainable AI Analysis")
 
-    explainer = shap.Explainer(model, scaler.transform(input_data))
-    shap_values = explainer(scaler.transform(input_data))
+    scaled_input = scaler.transform(input_data)
+    explainer = shap.Explainer(model.predict, background)
+    shap_values = explainer(scaled_input)
 
     shap_df = pd.DataFrame({
-        "Feature": input_data.columns,
-        "Impact": shap_values.values[0]
+        "Feature":input_data.columns,
+        "Impact":shap_values.values[0]
     })
 
-    shap_fig = px.bar(
+    # ===== LOCAL IMPORTANCE =====
+    st.markdown("### Local Feature Impact")
+
+    local_fig = px.bar(
         shap_df.sort_values("Impact"),
         x="Impact",
         y="Feature",
-        orientation="h",
-        title="Feature Impact on Prediction"
+        orientation="h"
     )
-    st.plotly_chart(shap_fig,use_container_width=True)
+    st.plotly_chart(local_fig,use_container_width=True)
 
-    # ================= AI RECOMMENDATIONS =================
+    # ===== WATERFALL =====
+    st.markdown("### Waterfall Explanation")
+
+    waterfall = go.Figure(go.Waterfall(
+        y=shap_df["Feature"],
+        x=shap_df["Impact"],
+        orientation="h"
+    ))
+    st.plotly_chart(waterfall,use_container_width=True)
+
+    # ===== GLOBAL IMPORTANCE =====
+    st.markdown("### Global Feature Importance")
+
+    global_imp = np.abs(background).mean(axis=0)
+
+    global_df = pd.DataFrame({
+        "Feature":input_data.columns,
+        "Importance":global_imp
+    })
+
+    gfig = px.bar(
+        global_df.sort_values("Importance"),
+        x="Importance",
+        y="Feature",
+        orientation="h"
+    )
+    st.plotly_chart(gfig,use_container_width=True)
+
+    # ================= AI TIPS =================
     st.subheader("AI Recommendations")
 
     tips=[]
 
-    if voltage > 245:
-        tips.append("Reduce voltage fluctuation devices")
+    if voltage>245:
+        tips.append("Voltage high → check appliances")
 
-    if sub1+sub2+sub3 > 3:
-        tips.append("Multiple appliances running simultaneously")
+    if sub1+sub2+sub3>3:
+        tips.append("Multiple devices running")
 
-    if hour > 18:
-        tips.append("Peak hour usage detected")
+    if hour>18:
+        tips.append("Peak hour consumption")
 
-    if lag24 > 1:
-        tips.append("Yesterday usage was high")
+    if lag24>1:
+        tips.append("Yesterday usage high")
 
     if not tips:
-        tips.append("Energy usage looks optimal")
+        tips.append("Energy usage optimal")
 
     for t in tips:
         st.info(t)
 
-    # ================= ANIMATED TREND =================
+    # ================= TREND SIMULATION =================
     st.subheader("Prediction Trend Simulation")
 
-    chart = st.line_chart(np.zeros(20))
+    chart=st.line_chart(np.zeros(30))
+    data=np.zeros(30)
 
-    data = np.zeros(20)
-
-    for i in range(20):
-        data[i] = prediction + np.random.normal(0,0.2)
+    for i in range(30):
+        data[i]=prediction+np.random.normal(0,0.2)
         chart.line_chart(data)
         time.sleep(0.05)
 
     # ================= RAW =================
-    with st.expander("View Raw Input"):
+    with st.expander("Raw Input Data"):
         st.write(input_data)
